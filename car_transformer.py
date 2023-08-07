@@ -1,12 +1,30 @@
 import math
 import os
 from tempfile import TemporaryDirectory
-from typing import Tuple
+import time
 
 import torch
 from torch import nn, Tensor
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
-from torch.utils.data import dataset
+from torch.utils.data import DataLoader
+
+from datasets import load_dataset
+import numpy as np
+
+BOS_TOKEN = 1024
+TOKENS_PER_FRAME = 129
+BS = 10
+CONTEXT_SIZE_FRAMES = 20
+N_FRAMES = 1200
+N = N_FRAMES - 20
+N_TOKENS = 1025 # size of vocabulary
+EM_SIZE = 200 # embedding dimension
+D_HID = 200 # dimension of the feedforward network model in ``nn.TransformerEncoder``
+N_LAYERS = 2 # number of ``nn.TransformerEncoderLayer`` in ``nn.TransformerEncoder``
+N_HEAD = 2 # number of heads in ``nn.MultiheadAttention``
+DROPOUT = 0.2 # dropout probability
+LR = 5.0 # learning rate
+EPOCHS = 3
 
 class TransformerModel(nn.Module):
 
@@ -64,16 +82,6 @@ class PositionalEncoding(nn.Module):
         x = x + self.pe[:x.size(0)]
         return self.dropout(x)
 
-from datasets import load_dataset
-import numpy as np
-
-BOS_TOKEN = 1024
-TOKENS_PER_FRAME = 129
-BS = 10
-CONTEXT_SIZE_FRAMES = 20
-N_FRAMES = 1200
-N = N_FRAMES - 20
-
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, files):
         self.files = files
@@ -103,36 +111,7 @@ class Dataset(torch.utils.data.Dataset):
         return x, y
 
 
-ds = load_dataset("commaai/commavq", num_proc=8)
-
-train_files = []
-for i in range(40):
-    train_files.extend(ds[str(i)]['path'])
-
-train_ds = Dataset(train_files)
-train_dl = torch.utils.data.DataLoader(train_ds, batch_size=BS, shuffle=True, num_workers=8, drop_last=True)
-val_ds = Dataset(ds['40']['path'])
-val_dl = torch.utils.data.DataLoader(val_ds, batch_size=BS, shuffle=True, num_workers=8, drop_last=True)
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-ntokens = 1025 # size of vocabulary
-emsize = 200 # embedding dimension
-d_hid = 200 # dimension of the feedforward network model in ``nn.TransformerEncoder``
-nlayers = 2 # number of ``nn.TransformerEncoderLayer`` in ``nn.TransformerEncoder``
-nhead = 2 # number of heads in ``nn.MultiheadAttention``
-dropout = 0.2 # dropout probability
-model = TransformerModel(ntokens, emsize, nhead, d_hid, nlayers, dropout).to(device)
-model = torch.compile(model)
-
-import time
-
-criterion = nn.CrossEntropyLoss()
-lr = 5.0 # learning rate
-optimizer = torch.optim.SGD(model.parameters(), lr=lr)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1.0, gamma=0.95)
-
-def train(model: nn.Module) -> None:
+def train(model: nn.Module, device, train_dl, criterion, optimizer, scheduler, epoch) -> None:
     model.train() # turn on train mode
     total_loss = 0.
     log_interval = 200
@@ -146,7 +125,7 @@ def train(model: nn.Module) -> None:
             y = y.to(device)
             preds = model(x)
             # what shape is the output normally?
-            output_flat = preds.view(-1, ntokens)
+            output_flat = preds.view(-1, N_TOKENS)
             loss = criterion(output_flat, y.reshape(-1))
 
         optimizer.zero_grad()
@@ -166,7 +145,7 @@ def train(model: nn.Module) -> None:
             total_loss = 0
             start_time = time.time()
 
-def evaluate(model: nn.Module, eval_data: Tensor) -> float:
+def evaluate(model: nn.Module, eval_data: Tensor, criterion) -> float:
     model.eval() # turn on evaluation mode
     total_loss = 0.
     with torch.no_grad():
@@ -174,29 +153,52 @@ def evaluate(model: nn.Module, eval_data: Tensor) -> float:
             x, y = data
             seq_len = x.size(0)
             preds = model(x)
-            preds_flat = preds.view(-1, ntokens)
+            preds_flat = preds.view(-1, N_TOKENS)
             total_loss += seq_len * criterion(preds_flat, y).item()
     return total_loss / (len(eval_data) - 1)
 
-best_val_loss = float('inf')
-epochs = 3
+def main():
+    ds = load_dataset("commaai/commavq", num_proc=8)
 
-with TemporaryDirectory() as tempdir:
-    best_model_params_path = os.path.join(tempdir, "best_model_params.pt")
+    train_files = []
+    for i in range(40):
+        train_files.extend(ds[str(i)]['path'])
 
-    for epoch in range(1, epochs + 1):
-        epoch_start_time = time.time()
-        train(model)
-        val_loss = evaluate(model, val_ds)
-        val_ppl = math.exp(val_loss)
-        elapsed = time.time() - epoch_start_time
-        print('-' * 89)
-        print(f'| end of epoch {epoch:3d} | time: {elapsed:5.2f}s | '
-            f'valid loss {val_loss:5.2f} | valid ppl {val_ppl:8.2f}')
-        print('-' * 89)
+    train_ds = Dataset(train_files)
+    train_dl = DataLoader(train_ds, batch_size=BS, shuffle=True, num_workers=8, drop_last=True)
+    val_ds = Dataset(ds['40']['path'])
+    val_dl = DataLoader(val_ds, batch_size=BS, shuffle=True, num_workers=8, drop_last=True)
 
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            torch.save(model.state_dict(), best_model_params_path)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-        scheduler.step()
+    model = TransformerModel(N_TOKENS, EM_SIZE, N_HEAD, D_HID, N_LAYERS, DROPOUT).to(device)
+    model = torch.compile(model)
+
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.SGD(model.parameters(), lr=LR)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1.0, gamma=0.95)
+
+    best_val_loss = float('inf')
+
+    with TemporaryDirectory() as tempdir:
+        best_model_params_path = os.path.join(tempdir, "best_model_params.pt")
+
+        for epoch in range(1, EPOCHS + 1):
+            epoch_start_time = time.time()
+            train(model, device, train_dl, criterion, optimizer, scheduler, epoch)
+            val_loss = evaluate(model, val_dl, criterion)
+            val_ppl = math.exp(val_loss)
+            elapsed = time.time() - epoch_start_time
+            print('-' * 89)
+            print(f'| end of epoch {epoch:3d} | time: {elapsed:5.2f}s | '
+                f'valid loss {val_loss:5.2f} | valid ppl {val_ppl:8.2f}')
+            print('-' * 89)
+
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                torch.save(model.state_dict(), best_model_params_path)
+
+            scheduler.step()
+
+if __name__ == "__main__":
+    main()
