@@ -123,6 +123,7 @@ nlayers = 2 # number of ``nn.TransformerEncoderLayer`` in ``nn.TransformerEncode
 nhead = 2 # number of heads in ``nn.MultiheadAttention``
 dropout = 0.2 # dropout probability
 model = TransformerModel(ntokens, emsize, nhead, d_hid, nlayers, dropout).to(device)
+model = torch.compile(model)
 
 import time
 
