@@ -140,13 +140,14 @@ def train(model: nn.Module) -> None:
 
     num_batches = len(train_dl)
     for batch, data in enumerate(train_dl):
-        x, y = data
-        x = x.to(device)
-        y = y.to(device)
-        preds = model(x)
-        # what shape is the output normally?
-        output_flat = preds.view(-1, ntokens)
-        loss = criterion(output_flat, y.reshape(-1))
+        with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+            x, y = data
+            x = x.to(device)
+            y = y.to(device)
+            preds = model(x)
+            # what shape is the output normally?
+            output_flat = preds.view(-1, ntokens)
+            loss = criterion(output_flat, y.reshape(-1))
 
         optimizer.zero_grad()
         loss.backward()
@@ -160,8 +161,8 @@ def train(model: nn.Module) -> None:
             cur_loss = total_loss / log_interval
             ppl = math.exp(cur_loss)
             print(f'| epoch {epoch:3d} | {batch:5d}/{num_batches:5d} batches | '
-                  f'lr {lr:02.2f} | ms/batch {ms_per_batch:5.2f} | '
-                  f'loss {cur_loss:5.2f} | ppl {ppl:8.2f}')
+                f'lr {lr:02.2f} | ms/batch {ms_per_batch:5.2f} | '
+                f'loss {cur_loss:5.2f} | ppl {ppl:8.2f}')
             total_loss = 0
             start_time = time.time()
 
