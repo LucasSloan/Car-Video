@@ -145,16 +145,16 @@ def train(model: nn.Module, device, train_dl, criterion, optimizer, scheduler, e
             total_loss = 0
             start_time = time.time()
 
-def evaluate(model: nn.Module, eval_data: Tensor, criterion) -> float:
+def evaluate(model: nn.Module, gpu_id, eval_data: Tensor, criterion) -> float:
     model.eval() # turn on evaluation mode
     total_loss = 0.
     with torch.no_grad():
         for data in eval_data:
             x, y = data
-            seq_len = x.size(0)
+            x, y = x.to(gpu_id), y.to(gpu_id)
             preds = model(x)
             preds_flat = preds.view(-1, N_TOKENS)
-            total_loss += seq_len * criterion(preds_flat, y).item()
+            total_loss += criterion(preds_flat, y.reshape(-1)).item()
     return total_loss / (len(eval_data) - 1)
 
 def main():
@@ -186,7 +186,7 @@ def main():
         for epoch in range(1, EPOCHS + 1):
             epoch_start_time = time.time()
             train(model, device, train_dl, criterion, optimizer, scheduler, epoch)
-            val_loss = evaluate(model, val_dl, criterion)
+            val_loss = evaluate(model, device, val_dl, criterion)
             val_ppl = math.exp(val_loss)
             elapsed = time.time() - epoch_start_time
             print('-' * 89)
