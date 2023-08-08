@@ -57,7 +57,7 @@ class TransformerModel(nn.Module):
         """
         src = self.embedding(src) * math.sqrt(self.d_model)
         src = self.pos_encoder(src)
-        output = self.transformer_encoder(src, src_mask)
+        output = self.transformer_encoder(src, src_mask, is_causal=True)
         output = self.linear(output)
         return output
     
@@ -117,13 +117,17 @@ def train(model: nn.Module, device, train_dl, criterion, optimizer, scheduler, e
     log_interval = 200
     start_time = time.time()
 
+    mask = nn.Transformer.generate_square_subsequent_mask(TOKENS_PER_FRAME * CONTEXT_SIZE_FRAMES).to(device)
+
     num_batches = len(train_dl)
     for batch, data in enumerate(train_dl):
         with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
             x, y = data
             x = x.to(device)
             y = y.to(device)
-            preds = model(x)
+            x = x.transpose(0, 1)
+            y = y.transpose(0, 1)
+            preds = model(x, mask)
             # what shape is the output normally?
             output_flat = preds.view(-1, N_TOKENS)
             loss = criterion(output_flat, y.reshape(-1))
@@ -148,11 +152,16 @@ def train(model: nn.Module, device, train_dl, criterion, optimizer, scheduler, e
 def evaluate(model: nn.Module, gpu_id, eval_data: Tensor, criterion) -> float:
     model.eval() # turn on evaluation mode
     total_loss = 0.
+
+    mask = nn.Transformer.generate_square_subsequent_mask(TOKENS_PER_FRAME * CONTEXT_SIZE_FRAMES).to(gpu_id)
+
     with torch.no_grad():
         for data in eval_data:
             x, y = data
             x, y = x.to(gpu_id), y.to(gpu_id)
-            preds = model(x)
+            x = x.transpose(0, 1)
+            y = y.transpose(0, 1)
+            preds = model(x, mask)
             preds_flat = preds.view(-1, N_TOKENS)
             total_loss += criterion(preds_flat, y.reshape(-1)).item()
     return total_loss / (len(eval_data) - 1)
