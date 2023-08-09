@@ -7,6 +7,10 @@ import torch
 from torch import nn, Tensor
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 from torch.utils.data import DataLoader
+import torch.multiprocessing as mp
+from torch.utils.data.distributed import DistributedSampler
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.distributed import init_process_group, destroy_process_group
 
 from datasets import load_dataset
 import numpy as np
@@ -25,6 +29,17 @@ N_HEAD = 2 # number of heads in ``nn.MultiheadAttention``
 DROPOUT = 0.2 # dropout probability
 LR = 5.0 # learning rate
 EPOCHS = 3
+
+def ddp_setup(rank: int, world_size: int):
+  """
+  Args:
+      rank: Unique identifier of each process
+     world_size: Total number of processes
+  """
+  os.environ["MASTER_ADDR"] = "localhost"
+  os.environ["MASTER_PORT"] = "12355"
+  init_process_group(backend="nccl", rank=rank, world_size=world_size)
+  torch.cuda.set_device(rank)
 
 class TransformerModel(nn.Module):
 
@@ -111,20 +126,20 @@ class Dataset(torch.utils.data.Dataset):
         return x, y
 
 
-def train(model: nn.Module, device, train_dl, criterion, optimizer, scheduler, epoch) -> None:
+def train(model: nn.Module, gpu_id, train_dl, criterion, optimizer, scheduler, epoch) -> None:
     model.train() # turn on train mode
     total_loss = 0.
     log_interval = 200
     start_time = time.time()
 
-    mask = nn.Transformer.generate_square_subsequent_mask(TOKENS_PER_FRAME * CONTEXT_SIZE_FRAMES).to(device)
+    mask = nn.Transformer.generate_square_subsequent_mask(TOKENS_PER_FRAME * CONTEXT_SIZE_FRAMES).to(gpu_id)
 
     num_batches = len(train_dl)
     for batch, data in enumerate(train_dl):
         with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
             x, y = data
-            x = x.to(device)
-            y = y.to(device)
+            x = x.to(gpu_id)
+            y = y.to(gpu_id)
             x = x.transpose(0, 1)
             y = y.transpose(0, 1)
             preds = model(x, mask)
@@ -138,7 +153,7 @@ def train(model: nn.Module, device, train_dl, criterion, optimizer, scheduler, e
         optimizer.step()
 
         total_loss += loss.item()
-        if batch % log_interval == 0 and batch > 0:
+        if gpu_id == 0 and batch % log_interval == 0 and batch > 0:
             lr = scheduler.get_last_lr()[0]
             ms_per_batch = (time.time() - start_time) * 1000 / log_interval
             cur_loss = total_loss / log_interval
@@ -166,22 +181,22 @@ def evaluate(model: nn.Module, gpu_id, eval_data: Tensor, criterion) -> float:
             total_loss += criterion(preds_flat, y.reshape(-1)).item()
     return total_loss / (len(eval_data) - 1)
 
-def main():
-    ds = load_dataset("commaai/commavq", num_proc=8)
+def main(gpu_id, world_size):
+    ddp_setup(gpu_id, world_size)
+    ds = load_dataset("commaai/commavq", num_proc=4)
 
     train_files = []
     for i in range(40):
         train_files.extend(ds[str(i)]['path'])
 
     train_ds = Dataset(train_files)
-    train_dl = DataLoader(train_ds, batch_size=BS, shuffle=True, num_workers=8, drop_last=True)
+    train_dl = DataLoader(train_ds, batch_size=BS, num_workers=4, drop_last=True, shuffle=False, sampler=DistributedSampler(train_ds))
     val_ds = Dataset(ds['40']['path'])
-    val_dl = DataLoader(val_ds, batch_size=BS, shuffle=True, num_workers=8, drop_last=True)
+    val_dl = DataLoader(val_ds, batch_size=BS, num_workers=4, drop_last=True, shuffle=False)
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    model = TransformerModel(N_TOKENS, EM_SIZE, N_HEAD, D_HID, N_LAYERS, DROPOUT).to(device)
+    model = TransformerModel(N_TOKENS, EM_SIZE, N_HEAD, D_HID, N_LAYERS, DROPOUT).to(gpu_id)
     model = torch.compile(model)
+    model = DDP(model, device_ids=[gpu_id])
 
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=LR)
@@ -193,21 +208,26 @@ def main():
         best_model_params_path = os.path.join(tempdir, "best_model_params.pt")
 
         for epoch in range(1, EPOCHS + 1):
+            train_dl.sampler.set_epoch(epoch)
             epoch_start_time = time.time()
-            train(model, device, train_dl, criterion, optimizer, scheduler, epoch)
-            val_loss = evaluate(model, device, val_dl, criterion)
-            val_ppl = math.exp(val_loss)
-            elapsed = time.time() - epoch_start_time
-            print('-' * 89)
-            print(f'| end of epoch {epoch:3d} | time: {elapsed:5.2f}s | '
-                f'valid loss {val_loss:5.2f} | valid ppl {val_ppl:8.2f}')
-            print('-' * 89)
+            train(model, gpu_id, train_dl, criterion, optimizer, scheduler, epoch)
+            if gpu_id == 0:
+                val_loss = evaluate(model, gpu_id, val_dl, criterion)
+                val_ppl = math.exp(val_loss)
+                elapsed = time.time() - epoch_start_time
+                print('-' * 89)
+                print(f'| end of epoch {epoch:3d} | time: {elapsed:5.2f}s | '
+                    f'valid loss {val_loss:5.2f} | valid ppl {val_ppl:8.2f}')
+                print('-' * 89)
 
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                torch.save(model.state_dict(), best_model_params_path)
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    torch.save(model.module.state_dict(), best_model_params_path)
 
             scheduler.step()
+    
+    destroy_process_group()
 
 if __name__ == "__main__":
-    main()
+    world_size = torch.cuda.device_count()
+    mp.spawn(main, args=(world_size,), nprocs=world_size)
