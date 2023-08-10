@@ -29,6 +29,7 @@ N_HEAD = 2 # number of heads in ``nn.MultiheadAttention``
 DROPOUT = 0.2 # dropout probability
 LR = 5.0 # learning rate
 EPOCHS = 3
+LOG_INTERVAL = 2000
 
 def ddp_setup(rank: int, world_size: int):
   """
@@ -129,7 +130,6 @@ class Dataset(torch.utils.data.Dataset):
 def train(model: nn.Module, gpu_id, train_dl, criterion, optimizer, scheduler, epoch) -> None:
     model.train() # turn on train mode
     total_loss = 0.
-    log_interval = 200
     start_time = time.time()
 
     mask = nn.Transformer.generate_square_subsequent_mask(TOKENS_PER_FRAME * CONTEXT_SIZE_FRAMES).to(gpu_id)
@@ -153,10 +153,10 @@ def train(model: nn.Module, gpu_id, train_dl, criterion, optimizer, scheduler, e
         optimizer.step()
 
         total_loss += loss.item()
-        if gpu_id == 0 and batch % log_interval == 0 and batch > 0:
+        if gpu_id == 0 and batch % LOG_INTERVAL == 0 and batch > 0:
             lr = scheduler.get_last_lr()[0]
-            ms_per_batch = (time.time() - start_time) * 1000 / log_interval
-            cur_loss = total_loss / log_interval
+            ms_per_batch = (time.time() - start_time) * 1000 / LOG_INTERVAL
+            cur_loss = total_loss / LOG_INTERVAL
             ppl = math.exp(cur_loss)
             print(f'| epoch {epoch:3d} | {batch:5d}/{num_batches:5d} batches | '
                 f'lr {lr:02.2f} | ms/batch {ms_per_batch:5.2f} | '
