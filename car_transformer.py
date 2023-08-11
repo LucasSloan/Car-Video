@@ -24,7 +24,7 @@ N = N_FRAMES - 20
 N_TOKENS = 1025 # size of vocabulary
 EM_SIZE = 200 # embedding dimension
 D_HID = 200 # dimension of the feedforward network model in ``nn.TransformerEncoder``
-N_LAYERS = 2 # number of ``nn.TransformerEncoderLayer`` in ``nn.TransformerEncoder``
+N_LAYERS = 6 # number of ``nn.TransformerEncoderLayer`` in ``nn.TransformerEncoder``
 N_HEAD = 2 # number of heads in ``nn.MultiheadAttention``
 DROPOUT = 0.2 # dropout probability
 LR = 5.0 # learning rate
@@ -48,7 +48,7 @@ class TransformerModel(nn.Module):
         super().__init__()
         self.model_type = 'Transformer'
         self.pos_encoder = PositionalEncoding(d_model, dropout)
-        encoder_layers = TransformerEncoderLayer(d_model, nhead, d_hid, dropout)
+        encoder_layers = TransformerEncoderLayer(d_model, nhead, d_hid, dropout, activation='gelu')
         self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
         self.embedding = nn.Embedding(ntoken, d_model)
         self.d_model = d_model
