@@ -27,7 +27,9 @@ D_HID = 200 # dimension of the feedforward network model in ``nn.TransformerEnco
 N_LAYERS = 6 # number of ``nn.TransformerEncoderLayer`` in ``nn.TransformerEncoder``
 N_HEAD = 2 # number of heads in ``nn.MultiheadAttention``
 DROPOUT = 0.2 # dropout probability
-LR = 5.0 # learning rate
+LR = 1e-4 # learning rate
+WD = 0.0 # weight decay
+GRADIENT_CLIP = 0.5
 EPOCHS = 3
 LOG_INTERVAL = 2000
 
@@ -149,7 +151,7 @@ def train(model: nn.Module, gpu_id, train_dl, criterion, optimizer, scheduler, e
 
         optimizer.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), GRADIENT_CLIP)
         optimizer.step()
 
         total_loss += loss.item()
@@ -199,7 +201,7 @@ def main(gpu_id, world_size):
     model = DDP(model, device_ids=[gpu_id])
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=LR)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=LR, betas=(0.9, 0.95), weight_decay=WD)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1.0, gamma=0.95)
 
     best_val_loss = float('inf')
