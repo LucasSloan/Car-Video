@@ -44,6 +44,9 @@ def ddp_setup(rank: int, world_size: int):
   init_process_group(backend="nccl", rank=rank, world_size=world_size)
   torch.cuda.set_device(rank)
 
+def count_parameters(model: nn.Module) -> int:
+  return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
 class TransformerModel(nn.Module):
 
     def __init__(self, ntoken: int, d_model: int, nhead: int, d_hid: int, nlayers: int, dropout: float = 0.5):
@@ -200,6 +203,7 @@ def main(gpu_id, world_size):
     model = TransformerModel(N_TOKENS, EM_SIZE, N_HEAD, D_HID, N_LAYERS, DROPOUT).to(gpu_id)
     model = torch.compile(model)
     model = DDP(model, device_ids=[gpu_id])
+    print(count_parameters(model))
 
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=LR, betas=(0.9, 0.95), weight_decay=WD)
