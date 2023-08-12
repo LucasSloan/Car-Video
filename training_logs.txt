@@ -1,4 +1,9 @@
-6 layer transformer, batch size 20, SGD learning rate 5.0
+6 layer transformer (1863025 parameters), batch size 20, SGD learning rate 5.0
 epoch 1 loss: 3.03
 epoch 2 loss: 3.02
 epoch 3 loss: 2.96
+
+6 layer transformer (1863025 parameters), batch size 20, Adam learning rate 1e-4
+epoch 1 loss: 2.87
+epoch 2 loss: 2.87
+epoch 3 loss: 2.86
