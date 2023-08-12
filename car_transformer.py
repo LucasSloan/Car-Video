@@ -153,6 +153,7 @@ def train(model: nn.Module, gpu_id, train_dl, criterion, optimizer, scheduler, e
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), GRADIENT_CLIP)
         optimizer.step()
+        scheduler.step()
 
         total_loss += loss.item()
         if gpu_id == 0 and batch % LOG_INTERVAL == 0 and batch > 0:
@@ -161,7 +162,7 @@ def train(model: nn.Module, gpu_id, train_dl, criterion, optimizer, scheduler, e
             cur_loss = total_loss / LOG_INTERVAL
             ppl = math.exp(cur_loss)
             print(f'| epoch {epoch:3d} | {batch:5d}/{num_batches:5d} batches | '
-                f'lr {lr:02.2f} | ms/batch {ms_per_batch:5.2f} | '
+                f'lr {lr:02.5f} | ms/batch {ms_per_batch:5.2f} | '
                 f'loss {cur_loss:5.2f} | ppl {ppl:8.2f}')
             total_loss = 0
             start_time = time.time()
@@ -202,7 +203,7 @@ def main(gpu_id, world_size):
 
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=LR, betas=(0.9, 0.95), weight_decay=WD)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1.0, gamma=0.95)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, len(train_dl) * EPOCHS)
 
     best_val_loss = float('inf')
 
@@ -225,8 +226,6 @@ def main(gpu_id, world_size):
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
                     torch.save(model.module.state_dict(), best_model_params_path)
-
-            scheduler.step()
     
     destroy_process_group()
 
