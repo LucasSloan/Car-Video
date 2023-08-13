@@ -15,18 +15,22 @@ from torch.distributed import init_process_group, destroy_process_group
 from datasets import load_dataset
 import numpy as np
 
+from transformers.models.gpt2.configuration_gpt2 import GPT2Config
+from flash_attn.models.gpt import GPTLMHeadModel
+
 BOS_TOKEN = 1024
 TOKENS_PER_FRAME = 129
 BS = 10
 CONTEXT_SIZE_FRAMES = 20
 N_FRAMES = 1200
 N = N_FRAMES - 20
-N_TOKENS = 1025 # size of vocabulary
+N_TOKENS = 1032 # size of vocabulary
 EM_SIZE = 200 # embedding dimension
 D_HID = 200 # dimension of the feedforward network model in ``nn.TransformerEncoder``
 N_LAYERS = 6 # number of ``nn.TransformerEncoderLayer`` in ``nn.TransformerEncoder``
 N_HEAD = 2 # number of heads in ``nn.MultiheadAttention``
 DROPOUT = 0.2 # dropout probability
+ROTARY_EMD_FRACTION = 0.5
 LR = 1e-4 # learning rate
 WD = 0.0 # weight decay
 GRADIENT_CLIP = 0.5
@@ -47,61 +51,61 @@ def ddp_setup(rank: int, world_size: int):
 def count_parameters(model: nn.Module) -> int:
   return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-class TransformerModel(nn.Module):
+# class TransformerModel(nn.Module):
 
-    def __init__(self, ntoken: int, d_model: int, nhead: int, d_hid: int, nlayers: int, dropout: float = 0.5):
-        super().__init__()
-        self.model_type = 'Transformer'
-        self.pos_encoder = PositionalEncoding(d_model, dropout)
-        encoder_layers = TransformerEncoderLayer(d_model, nhead, d_hid, dropout, activation='gelu')
-        self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
-        self.embedding = nn.Embedding(ntoken, d_model)
-        self.d_model = d_model
-        self.linear = nn.Linear(d_model, ntoken)
+#     def __init__(self, ntoken: int, d_model: int, nhead: int, d_hid: int, nlayers: int, dropout: float = 0.5):
+#         super().__init__()
+#         self.model_type = 'Transformer'
+#         self.pos_encoder = PositionalEncoding(d_model, dropout)
+#         encoder_layers = TransformerEncoderLayer(d_model, nhead, d_hid, dropout, activation='gelu')
+#         self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
+#         self.embedding = nn.Embedding(ntoken, d_model)
+#         self.d_model = d_model
+#         self.linear = nn.Linear(d_model, ntoken)
     
-        self.init_weights()
+#         self.init_weights()
     
-    def init_weights(self) -> None:
-        initrange = 0.1
-        self.embedding.weight.data.uniform_(-initrange, initrange)
-        self.linear.bias.data.zero_()
-        self.linear.weight.data.uniform_(-initrange, initrange)
+#     def init_weights(self) -> None:
+#         initrange = 0.1
+#         self.embedding.weight.data.uniform_(-initrange, initrange)
+#         self.linear.bias.data.zero_()
+#         self.linear.weight.data.uniform_(-initrange, initrange)
 
-    def forward(self, src: Tensor, src_mask: Tensor = None) -> Tensor:
-        """
-        Arguments:
-            src: Tensor, shape ``[seq_len, batch_size]``
-            src_mask: Tensor, shape ``[seq_len, seq_len]``
+#     def forward(self, src: Tensor, src_mask: Tensor = None) -> Tensor:
+#         """
+#         Arguments:
+#             src: Tensor, shape ``[seq_len, batch_size]``
+#             src_mask: Tensor, shape ``[seq_len, seq_len]``
 
-        Returns:
-            output Tensor of shape ``[seq_len, batch_size, ntoken]``
-        """
-        src = self.embedding(src) * math.sqrt(self.d_model)
-        src = self.pos_encoder(src)
-        output = self.transformer_encoder(src, src_mask, is_causal=True)
-        output = self.linear(output)
-        return output
+#         Returns:
+#             output Tensor of shape ``[seq_len, batch_size, ntoken]``
+#         """
+#         src = self.embedding(src) * math.sqrt(self.d_model)
+#         src = self.pos_encoder(src)
+#         output = self.transformer_encoder(src, src_mask, is_causal=True)
+#         output = self.linear(output)
+#         return output
     
-class PositionalEncoding(nn.Module):
+# class PositionalEncoding(nn.Module):
 
-    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
-        super().__init__()
-        self.dropout = nn.Dropout(p=dropout)
+#     def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
+#         super().__init__()
+#         self.dropout = nn.Dropout(p=dropout)
 
-        position = torch.arange(max_len).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
-        pe = torch.zeros(max_len, 1, d_model)
-        pe[:, 0, 0::2] = torch.sin(position * div_term)
-        pe[:, 0, 1::2] = torch.cos(position * div_term)
-        self.register_buffer('pe', pe)
+#         position = torch.arange(max_len).unsqueeze(1)
+#         div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+#         pe = torch.zeros(max_len, 1, d_model)
+#         pe[:, 0, 0::2] = torch.sin(position * div_term)
+#         pe[:, 0, 1::2] = torch.cos(position * div_term)
+#         self.register_buffer('pe', pe)
 
-    def forward(self, x: Tensor) -> Tensor:
-        """
-        Arguments:
-            x: Tensor, shape ``[seq_len, batch_size, embedding_dim]``
-        """
-        x = x + self.pe[:x.size(0)]
-        return self.dropout(x)
+#     def forward(self, x: Tensor) -> Tensor:
+#         """
+#         Arguments:
+#             x: Tensor, shape ``[seq_len, batch_size, embedding_dim]``
+#         """
+#         x = x + self.pe[:x.size(0)]
+#         return self.dropout(x)
 
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, files):
@@ -137,7 +141,7 @@ def train(model: nn.Module, gpu_id, train_dl, criterion, optimizer, scheduler, e
     total_loss = 0.
     start_time = time.time()
 
-    mask = nn.Transformer.generate_square_subsequent_mask(TOKENS_PER_FRAME * CONTEXT_SIZE_FRAMES).to(gpu_id)
+    # mask = nn.Transformer.generate_square_subsequent_mask(TOKENS_PER_FRAME * CONTEXT_SIZE_FRAMES).to(gpu_id)
 
     num_batches = len(train_dl)
     for batch, data in enumerate(train_dl):
@@ -145,9 +149,9 @@ def train(model: nn.Module, gpu_id, train_dl, criterion, optimizer, scheduler, e
             x, y = data
             x = x.to(gpu_id)
             y = y.to(gpu_id)
-            x = x.transpose(0, 1)
-            y = y.transpose(0, 1)
-            preds = model(x, mask)
+            # x = x.transpose(0, 1)
+            # y = y.transpose(0, 1)
+            preds = model(x)[0]
             # what shape is the output normally?
             output_flat = preds.view(-1, N_TOKENS)
             loss = criterion(output_flat, y.reshape(-1))
@@ -174,17 +178,18 @@ def evaluate(model: nn.Module, gpu_id, eval_data: Tensor, criterion) -> float:
     model.eval() # turn on evaluation mode
     total_loss = 0.
 
-    mask = nn.Transformer.generate_square_subsequent_mask(TOKENS_PER_FRAME * CONTEXT_SIZE_FRAMES).to(gpu_id)
+    # mask = nn.Transformer.generate_square_subsequent_mask(TOKENS_PER_FRAME * CONTEXT_SIZE_FRAMES).to(gpu_id)
 
-    with torch.no_grad():
-        for data in eval_data:
-            x, y = data
-            x, y = x.to(gpu_id), y.to(gpu_id)
-            x = x.transpose(0, 1)
-            y = y.transpose(0, 1)
-            preds = model(x, mask)
-            preds_flat = preds.view(-1, N_TOKENS)
-            total_loss += criterion(preds_flat, y.reshape(-1)).item()
+    with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+        with torch.no_grad():
+            for data in eval_data:
+                x, y = data
+                x, y = x.to(gpu_id), y.to(gpu_id)
+                # x = x.transpose(0, 1)
+                # y = y.transpose(0, 1)
+                preds = model(x)[0]
+                preds_flat = preds.view(-1, N_TOKENS)
+                total_loss += criterion(preds_flat, y.reshape(-1)).item()
     return total_loss / (len(eval_data) - 1)
 
 def main(gpu_id, world_size):
@@ -200,7 +205,17 @@ def main(gpu_id, world_size):
     val_ds = Dataset(ds['40']['path'])
     val_dl = DataLoader(val_ds, batch_size=BS, num_workers=4, drop_last=True, shuffle=False)
 
-    model = TransformerModel(N_TOKENS, EM_SIZE, N_HEAD, D_HID, N_LAYERS, DROPOUT).to(gpu_id)
+    # model = TransformerModel(N_TOKENS, EM_SIZE, N_HEAD, D_HID, N_LAYERS, DROPOUT).to(gpu_id)
+    config = GPT2Config(vocab_size=N_TOKENS, n_positions=TOKENS_PER_FRAME * CONTEXT_SIZE_FRAMES, n_embd=EM_SIZE,
+                    n_inner=D_HID, n_layer=N_LAYERS, n_head=N_HEAD, 
+                    resid_pdrop=DROPOUT, embd_pdrop=DROPOUT, attn_pdrop=DROPOUT,
+                    scale_attn_by_inverse_layer_idx=True, 
+                    rotary_emb_fraction=ROTARY_EMD_FRACTION,
+                    max_position_embeddings=0.0,
+                    use_flash_attn=True, fused_mlp=True,
+                    fused_bias_fc=True, fused_dropout_add_ln=True, 
+                    pad_vocab_size_multiple=8)
+    model = GPTLMHeadModel(config).to(gpu_id)
     model = torch.compile(model)
     model = DDP(model, device_ids=[gpu_id])
     print(count_parameters(model))
