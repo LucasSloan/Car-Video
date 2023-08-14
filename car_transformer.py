@@ -17,6 +17,7 @@ import numpy as np
 
 from transformers.models.gpt2.configuration_gpt2 import GPT2Config
 from flash_attn.models.gpt import GPTLMHeadModel
+from flash_attn.losses.cross_entropy import CrossEntropyLoss
 
 BOS_TOKEN = 1024
 TOKENS_PER_FRAME = 129
@@ -220,7 +221,7 @@ def main(gpu_id, world_size):
     model = DDP(model, device_ids=[gpu_id])
     print(count_parameters(model))
 
-    criterion = nn.CrossEntropyLoss()
+    criterion = CrossEntropyLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=LR, betas=(0.9, 0.95), weight_decay=WD)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, len(train_dl) * EPOCHS)
 
