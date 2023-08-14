@@ -7,3 +7,15 @@ epoch 3 loss: 2.96
 epoch 1 loss: 2.87
 epoch 2 loss: 2.87
 epoch 3 loss: 2.86
+
+6 layer transformer (1863025 parameters), batch size 20, Adam learning rate 1e-4, cosine learning rate schedule
+epoch 1 loss: 2.87
+epoch 2 loss: 2.86
+epoch 3 loss: 2.85
+
+6 layer (flash attention) transformer (1658800 parameters), rotary position embeddings, batch size 20, Adam learning rate 1e-4, cosine learning rate schedule
+epoch 1 loss: 3.18
+epoch 2 loss: 3.18
+epoch 3 loss: 3.14
+
+runs faster than the pytorch model, and has better training loss (2.79 vs 2.91) my guess is that the dropout is broken
