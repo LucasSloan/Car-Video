@@ -1,21 +1,28 @@
-6 layer transformer (1863025 parameters), batch size 20, SGD learning rate 5.0
+6 layer transformer (1863025 parameters), batch size 20, SGD learning rate 5.0, dropout 0.2
 epoch 1 loss: 3.03
 epoch 2 loss: 3.02
 epoch 3 loss: 2.96
 
-6 layer transformer (1863025 parameters), batch size 20, Adam learning rate 1e-4
+6 layer transformer (1863025 parameters), batch size 20, Adam learning rate 1e-4, dropout 0.2
 epoch 1 loss: 2.87
 epoch 2 loss: 2.87
 epoch 3 loss: 2.86
 
-6 layer transformer (1863025 parameters), batch size 20, Adam learning rate 1e-4, cosine learning rate schedule
+6 layer transformer (1863025 parameters), batch size 20, Adam learning rate 1e-4, dropout 0.2, cosine learning rate schedule
 epoch 1 loss: 2.87
 epoch 2 loss: 2.86
 epoch 3 loss: 2.85
 
-6 layer (flash attention) transformer (1658800 parameters), rotary position embeddings, batch size 20, Adam learning rate 1e-4, cosine learning rate schedule
+6 layer (flash attention) transformer (1658800 parameters), rotary position embeddings, batch size 20, Adam learning rate 1e-4, dropout 0.2, cosine learning rate schedule
 epoch 1 loss: 3.18
 epoch 2 loss: 3.18
 epoch 3 loss: 3.14
 
 runs faster than the pytorch model, and has better training loss (2.79 vs 2.91) my guess is that the dropout is broken
+
+6 layer (flash attention) transformer (1658800 parameters), rotary position embeddings, batch size 20, Adam learning rate 1e-4, dropout 0.0, weight decay 0.1, cosine learning rate schedule
+epoch 1 loss: 2.69
+epoch 2 loss: 2.66
+epoch 3 loss: 2.64
+
+I also ran a training run with both dropout and weight_decay, which worked better than dropout without weight decay, but worse than just weight decay
