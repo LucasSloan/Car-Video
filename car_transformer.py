@@ -34,7 +34,6 @@ DROPOUT = 0.0 # dropout probability
 ROTARY_EMD_FRACTION = 0.5
 LR = 1e-4 # learning rate
 WD = 0.1 # weight decay
-EMA = 0.995
 GRADIENT_CLIP = 0.5
 EPOCHS = 3
 LOG_INTERVAL = 2000
@@ -138,7 +137,7 @@ class Dataset(torch.utils.data.Dataset):
         return x, y
 
 
-def train(model: nn.Module, ema_model: nn.Module, gpu_id, train_dl, criterion, optimizer, scheduler, epoch) -> None:
+def train(model: nn.Module, gpu_id, train_dl, criterion, optimizer, scheduler, epoch) -> None:
     model.train() # turn on train mode
     total_loss = 0.
     start_time = time.time()
@@ -163,7 +162,6 @@ def train(model: nn.Module, ema_model: nn.Module, gpu_id, train_dl, criterion, o
         torch.nn.utils.clip_grad_norm_(model.parameters(), GRADIENT_CLIP)
         optimizer.step()
         scheduler.step()
-        ema_model.update_parameters(model)
 
         total_loss += loss.item()
         if gpu_id == 0 and batch % LOG_INTERVAL == 0 and batch > 0:
@@ -223,10 +221,6 @@ def main(gpu_id, world_size):
     model = DDP(model, device_ids=[gpu_id])
     print(count_parameters(model))
 
-    ema_avg = lambda averaged_model_parameter, model_parameter, num_averaged:\
-        (1 - EMA) * averaged_model_parameter + EMA * model_parameter
-    ema_model = torch.optim.swa_utils.AveragedModel(model, avg_fn=ema_avg)
-
     criterion = CrossEntropyLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=LR, betas=(0.9, 0.95), weight_decay=WD)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, len(train_dl) * EPOCHS)
@@ -239,15 +233,14 @@ def main(gpu_id, world_size):
         for epoch in range(1, EPOCHS + 1):
             train_dl.sampler.set_epoch(epoch)
             epoch_start_time = time.time()
-            train(model, ema_model, gpu_id, train_dl, criterion, optimizer, scheduler, epoch)
+            train(model, gpu_id, train_dl, criterion, optimizer, scheduler, epoch)
             if gpu_id == 0:
                 val_loss = evaluate(model, gpu_id, val_dl, criterion)
-                ema_val_loss = evaluate(ema_model, gpu_id, val_dl, criterion)
                 val_ppl = math.exp(val_loss)
                 elapsed = time.time() - epoch_start_time
                 print('-' * 89)
                 print(f'| end of epoch {epoch:3d} | time: {elapsed:5.2f}s | '
-                    f'valid loss {val_loss:5.2f} | ema valid loss {ema_val_loss:5.2f} | valid ppl {val_ppl:8.2f}')
+                    f'valid loss {val_loss:5.2f} | valid ppl {val_ppl:8.2f}')
                 print('-' * 89)
 
                 if val_loss < best_val_loss:
