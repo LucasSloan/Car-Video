@@ -26,3 +26,8 @@ epoch 2 loss: 2.66
 epoch 3 loss: 2.64
 
 I also ran a training run with both dropout and weight_decay, which worked better than dropout without weight decay, but worse than just weight decay
+
+6 layer (flash attention) transformer (1658800 parameters), rotary position embeddings, batch size 20, Adam learning rate 1e-4, dropout 0.0, weight decay 0.1, cosine learning rate schedule, ema
+epoch 1 loss: 2.66 ema_loss: 2.66
+epoch 2 loss: 2.63 ema_loss: 2.63
+epoch 3 loss: 2.62 ema_loss: 2.62
