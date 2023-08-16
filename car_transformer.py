@@ -210,10 +210,11 @@ def main(gpu_id, world_size):
     config = GPT2Config(vocab_size=N_TOKENS, n_positions=TOKENS_PER_FRAME * CONTEXT_SIZE_FRAMES, n_embd=EM_SIZE,
                     n_inner=D_HID, n_layer=N_LAYERS, n_head=N_HEAD, 
                     resid_pdrop=DROPOUT, embd_pdrop=DROPOUT, attn_pdrop=DROPOUT,
+                    activation_function='swiglu',
                     scale_attn_by_inverse_layer_idx=True, 
                     rotary_emb_fraction=ROTARY_EMD_FRACTION,
                     max_position_embeddings=0.0,
-                    use_flash_attn=True, fused_mlp=True,
+                    use_flash_attn=True, fused_mlp=False,
                     fused_bias_fc=True, fused_dropout_add_ln=True, 
                     pad_vocab_size_multiple=8)
     model = GPTLMHeadModel(config).to(gpu_id)
