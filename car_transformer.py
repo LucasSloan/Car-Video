@@ -33,6 +33,7 @@ N_HEAD = 2 # number of heads in ``nn.MultiheadAttention``
 DROPOUT = 0.0 # dropout probability
 ROTARY_EMD_FRACTION = 0.5
 LR = 1e-4 # learning rate
+WARMUP_STEPS = 4000
 WD = 0.1 # weight decay
 GRADIENT_CLIP = 0.5
 EPOCHS = 3
@@ -224,7 +225,9 @@ def main(gpu_id, world_size):
 
     criterion = CrossEntropyLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=LR, betas=(0.9, 0.95), weight_decay=WD)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, len(train_dl) * EPOCHS)
+    scheduler1 = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1e-5, total_iters=WARMUP_STEPS)
+    scheduler2 = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, len(train_dl) * EPOCHS - WARMUP_STEPS)
+    scheduler = torch.optim.lr_scheduler.SequentialLR(optimizer, schedulers=[scheduler1, scheduler2], milestones=[WARMUP_STEPS])
 
     best_val_loss = float('inf')
 
