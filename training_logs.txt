@@ -31,3 +31,31 @@ I also ran a training run with both dropout and weight_decay, which worked bette
 epoch 1 loss: 2.66 ema_loss: 2.66
 epoch 2 loss: 2.63 ema_loss: 2.63
 epoch 3 loss: 2.62 ema_loss: 2.62
+
+6 layer (flash attention) transformer (2102272 parameters), swiglu activation, rotary position embeddings, batch size 20, Adam learning rate 1e-4, dropout 0.0, weight decay 0.1, cosine learning rate schedule
+epoch 1 loss: 2.60
+epoch 2 loss: 2.58
+epoch 3 loss: 2.56
+
+38 ms/batch
+
+8 layer (flash attention) transformer (2142800 parameters), rotary position embeddings, batch size 20, Adam learning rate 1e-4, dropout 0.0, weight decay 0.1, cosine learning rate schedule
+epoch 1 loss: 2.62
+epoch 2 loss: 2.59
+epoch 3 loss: N/A, killed in favor of other experiments
+
+48.5 ms/batch
+
+5 layer (flash attention) transformer (2042360 parameters), model width 512, rotary position embeddings, batch size 20, Adam learning rate 1e-4, dropout 0.0, weight decay 0.1, cosine learning rate schedule
+epoch 1 loss: 2.61
+epoch 2 loss: N/A, killed in favor of other experiments
+epoch 3 loss: N/A, killed in favor of other experiments
+
+35 ms/batch
+
+18 layer (flash attention) transformer (15669248 parameters), swiglu activation, model width 768, rotary position embeddings, batch size 20, Adam learning rate 1e-4, dropout 0.0, weight decay 0.1, cosine learning rate schedule
+epoch 1 loss: 2.32
+epoch 2 loss: N/A, killed in favor of other experiments
+epoch 3 loss: N/A, killed in favor of other experiments
+
+130 ms/batch (10x parameters, 4x latency)
