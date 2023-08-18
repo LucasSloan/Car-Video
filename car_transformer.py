@@ -233,6 +233,7 @@ def main(gpu_id, world_size):
 
     with TemporaryDirectory() as tempdir:
         best_model_params_path = os.path.join(tempdir, "best_model_params.pt")
+        print("saving model to", best_model_params_path)
 
         for epoch in range(1, EPOCHS + 1):
             train_dl.sampler.set_epoch(epoch)
