@@ -31,7 +31,7 @@ D_HID = 200 # dimension of the feedforward network model in ``nn.TransformerEnco
 N_LAYERS = 6 # number of ``nn.TransformerEncoderLayer`` in ``nn.TransformerEncoder``
 N_HEAD = 2 # number of heads in ``nn.MultiheadAttention``
 DROPOUT = 0.0 # dropout probability
-ROTARY_EMD_FRACTION = 0.5
+ROTARY_EMD_FRACTION = 0.0
 LR = 3e-4 # learning rate
 WARMUP_STEPS = 4000
 WD = 0.1 # weight decay
@@ -214,7 +214,7 @@ def main(gpu_id, world_size):
                     activation_function='swiglu',
                     scale_attn_by_inverse_layer_idx=True, 
                     rotary_emb_fraction=ROTARY_EMD_FRACTION,
-                    max_position_embeddings=0.0,
+                    # max_position_embeddings=1.0,
                     use_flash_attn=True, fused_mlp=False,
                     fused_bias_fc=True, fused_dropout_add_ln=True, 
                     pad_vocab_size_multiple=8)
