@@ -88,3 +88,10 @@ epoch 2 loss: 2.56
 epoch 3 loss: 2.55
 epoch 4 loss: 2.53
 epoch 5 loss: 2.52
+
+23 layer (flash attention) transformer (98519552 parameters), swiglu activation, learned position embeddings, batch size 20, Adam learning rate 3e-4, dropout 0.0, weight decay 0.1, cosine learning rate schedule with warmup
+epoch 1 loss: 2.24
+epoch 2 loss: 2.18
+epoch 3 loss: 2.13
+
+462 ms/batch
