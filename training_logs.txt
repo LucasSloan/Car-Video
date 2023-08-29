@@ -77,12 +77,12 @@ epoch 3 loss: N/A, killed in favor of other experiments
 
 465 ms/batch
 
-6 layer (flash attention) transformer (2102272 parameters), swiglu activation, learned position embeddings, batch size 20, Adam learning rate 3e-4, dropout 0.0, weight decay 0.1, cosine learning rate schedule with warmup
+6 layer (flash attention) transformer (2618272 parameters), swiglu activation, learned position embeddings, batch size 20, Adam learning rate 3e-4, dropout 0.0, weight decay 0.1, cosine learning rate schedule with warmup
 epoch 1 loss: 2.58
 epoch 2 loss: 2.55
 epoch 3 loss: 2.53
 
-6 layer (flash attention) transformer (2102272 parameters), swiglu activation, learned position embeddings, batch size 20, Adam learning rate 3e-4, dropout 0.0, weight decay 0.1, cosine learning rate schedule with warmup
+6 layer (flash attention) transformer (2618272 parameters), swiglu activation, learned position embeddings, batch size 20, Adam learning rate 3e-4, dropout 0.0, weight decay 0.1, cosine learning rate schedule with warmup
 epoch 1 loss: 2.58
 epoch 2 loss: 2.56
 epoch 3 loss: 2.55
